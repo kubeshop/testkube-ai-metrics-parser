@@ -28,7 +28,7 @@ go install github.com/kubeshop/testkube-ai-metrics-parser/cmd/testkube-ai-metric
 
 # Docker
 docker run --rm -v "$PWD:/data" -w /data \
-  ghcr.io/kubeshop/testkube-ai-metrics-parser:latest ragas --stdout
+  docker.io/kubeshop/testkube-ai-metrics-parser:latest ragas --stdout
 ```
 
 ## Usage
@@ -126,7 +126,7 @@ working-directory volume, so the metrics step sees the eval's output.
 ```yaml
 - name: Export metrics
   condition: always
-  container: { image: ghcr.io/kubeshop/testkube-ai-metrics-parser:latest }
+  container: { image: docker.io/kubeshop/testkube-ai-metrics-parser:latest }
   shell: testkube-ai-metrics-parser ragas -i results/ragas_results.json -o results/metrics.lp --stdout
 - name: Save results
   condition: always
@@ -151,7 +151,7 @@ unchanged. Just set `DEEPEVAL_RESULTS_FOLDER` so DeepEval writes its documented
     deepeval test run tests/
 - name: Export metrics
   condition: always
-  container: { image: ghcr.io/kubeshop/testkube-ai-metrics-parser:latest }
+  container: { image: docker.io/kubeshop/testkube-ai-metrics-parser:latest }
   shell: testkube-ai-metrics-parser deepeval -i 'results/test_run_*.json' -o results/metrics.lp --stdout
 - name: Save results
   condition: always
