@@ -48,29 +48,9 @@ spec:
         deepeval test run test_evals.py
     - name: Export metrics
       condition: always
-      # Use run.command/args (not shell) plus workingDir + securityContext so
-      # Testkube skips registry image inspection and uses the image loaded into
-      # the cluster via `minikube image load`. imagePullPolicy alone is not
-      # enough: the worker inspects the image at scheduling time unless
-      # command + workingDir + runAsGroup are all set (NeedsImageData == false).
-      run:
-        image: testkube-ai-metrics-parser:dev
-        imagePullPolicy: IfNotPresent
-        workingDir: /data
-        command:
-          - testkube-ai-metrics-parser
-        args:
-          - deepeval
-          - -i
-          - results/test_run_*.json
-          - -o
-          - results/metrics.lp
-          - --tag
-          - suite=getting-started
-          - --stdout
-        securityContext:
-          runAsUser: 0
-          runAsGroup: 0
+      container:
+        image: docker.io/kubeshop/testkube-ai-metrics-parser:latest
+      shell: testkube-ai-metrics-parser deepeval -i 'results/test_run_*.json' -o results/metrics.lp --tag suite=getting-started --stdout
     - name: Save results
       condition: always
       artifacts:

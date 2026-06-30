@@ -35,22 +35,9 @@ spec:
           --output_path ./results
     - name: Export metrics
       condition: always
-      run:
-        image: testkube-ai-metrics-parser:dev
-        imagePullPolicy: IfNotPresent
-        workingDir: /data
-        command:
-          - testkube-ai-metrics-parser
-        args:
-          - lm-eval
-          - -i
-          - results/**/*.json
-          - -o
-          - results/metrics.lp
-          - --stdout
-        securityContext:
-          runAsUser: 0
-          runAsGroup: 0
+      container:
+        image: docker.io/kubeshop/testkube-ai-metrics-parser:latest
+      shell: testkube-ai-metrics-parser lm-eval -i 'results/**/*.json' -o results/metrics.lp --stdout
     - name: Save results
       condition: always
       artifacts:

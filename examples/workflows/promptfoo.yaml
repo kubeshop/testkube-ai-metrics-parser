@@ -33,22 +33,9 @@ spec:
       shell: npx --yes promptfoo@latest eval -o results.json -o results.html
     - name: Export metrics
       condition: always
-      run:
-        image: testkube-ai-metrics-parser:dev
-        imagePullPolicy: IfNotPresent
-        workingDir: /data/repo/examples/getting-started
-        command:
-          - testkube-ai-metrics-parser
-        args:
-          - promptfoo
-          - -i
-          - results.json
-          - -o
-          - results.lp
-          - --stdout
-        securityContext:
-          runAsUser: 0
-          runAsGroup: 0
+      container:
+        image: docker.io/kubeshop/testkube-ai-metrics-parser:latest
+      shell: testkube-ai-metrics-parser promptfoo -i results.json -o results.lp --stdout
     - name: Save report
       condition: always
       artifacts:

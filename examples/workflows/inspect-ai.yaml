@@ -43,26 +43,11 @@ spec:
         set -e
         pip install --no-cache-dir inspect-ai openai
         inspect eval task.py --model openai/gpt-4o-mini --log-dir ./logs --log-format json
-    # run.command/args + workingDir + runAsGroup let Testkube use the image
-    # loaded via `minikube image load` without a registry round-trip.
     - name: Export metrics
       condition: always
-      run:
-        image: testkube-ai-metrics-parser:dev
-        imagePullPolicy: IfNotPresent
-        workingDir: /data
-        command:
-          - testkube-ai-metrics-parser
-        args:
-          - inspect-ai
-          - -i
-          - logs/*.json
-          - -o
-          - metrics/eval.lp
-          - --stdout
-        securityContext:
-          runAsUser: 0
-          runAsGroup: 0
+      container:
+        image: docker.io/kubeshop/testkube-ai-metrics-parser:latest
+      shell: testkube-ai-metrics-parser inspect-ai -i 'logs/*.json' -o metrics/eval.lp --stdout
     - name: Save logs and metrics
       condition: always
       artifacts:
