@@ -11,14 +11,18 @@ consumer, not a requirement.
 
 ## Supported frameworks
 
-- `inspect-ai` — Inspect AI eval logs
-- `ragas` — Ragas evaluation results
-- `promptfoo` — promptfoo eval results
-- `lm-eval` — EleutherAI lm-evaluation-harness results
-- `deepeval` — DeepEval test runs
+- `inspect-ai` — [Inspect AI](https://inspect.aisi.org.uk/) eval logs
+- `ragas` — [Ragas](https://docs.ragas.io/) evaluation results
+- `promptfoo` — [promptfoo](https://www.promptfoo.dev/) eval results
+- `lm-eval` — [EleutherAI lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) results
+- `deepeval` — [DeepEval](https://deepeval.com/) test runs
 
 See [docs/SCHEMA.md](docs/SCHEMA.md) for the exact measurements, fields, and
 tags each one emits.
+
+Need another framework or an enhancement to an existing one? Please
+[open an issue](https://github.com/kubeshop/testkube-ai-metrics-parser/issues/new)
+on the repo to request it.
 
 ## Install
 
