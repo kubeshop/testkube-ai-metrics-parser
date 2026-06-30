@@ -1,0 +1,71 @@
+apiVersion: testworkflows.testkube.io/v1
+kind: TestWorkflow
+metadata:
+  name: inspect-ai-getting-started
+  labels:
+    type: ai
+spec:
+  content:
+    files:
+      - path: /data/task.py
+        content: |
+          from inspect_ai import Task, task
+          from inspect_ai.dataset import Sample
+          from inspect_ai.scorer import includes
+          from inspect_ai.solver import generate
+
+          @task
+          def capitals():
+              return Task(
+                  dataset=[
+                      Sample(input="What is the capital of France? Reply with only the city name.", target="Paris"),
+                      Sample(input="What is the capital of Japan? Reply with only the city name.", target="Tokyo"),
+                      Sample(input="What is the capital of Sweden? Reply with only the city name.", target="Stockholm"),
+                  ],
+                  solver=generate(),
+                  scorer=includes(),
+              )
+  container:
+    workingDir: /data
+    image: python:3.12-slim
+    env:
+      - name: HOME
+        value: /data
+      - name: OPENAI_API_KEY
+        value: '{{credential("OPENAI_API_KEY")}}'
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  steps:
+    - name: Install and eval
+      shell: |
+        set -e
+        pip install --no-cache-dir inspect-ai openai
+        inspect eval task.py --model openai/gpt-4o-mini --log-dir ./logs --log-format json
+    # run.command/args + workingDir + runAsGroup let Testkube use the image
+    # loaded via `minikube image load` without a registry round-trip.
+    - name: Export metrics
+      condition: always
+      run:
+        image: testkube-ai-metrics-parser:dev
+        imagePullPolicy: IfNotPresent
+        workingDir: /data
+        command:
+          - testkube-ai-metrics-parser
+        args:
+          - inspect-ai
+          - -i
+          - logs/*.json
+          - -o
+          - metrics/eval.lp
+          - --stdout
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+    - name: Save logs and metrics
+      condition: always
+      artifacts:
+        paths:
+          - logs/*.json
+          - metrics/*.lp

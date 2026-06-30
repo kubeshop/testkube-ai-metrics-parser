@@ -1,0 +1,44 @@
+# Minimal in-cluster smoke test: needs no API key. Generates a sample eval
+# output, runs testkube-ai-metrics-parser on it, and saves the .lp artifact. Use this first to
+# confirm the locally loaded image works and metrics land in Insights.
+apiVersion: testworkflows.testkube.io/v1
+kind: TestWorkflow
+metadata:
+  name: ai-metrics-smoke
+  labels:
+    type: ai
+spec:
+  container:
+    workingDir: /data
+  steps:
+    - name: Generate sample eval output
+      container:
+        image: busybox:1.36
+      shell: |
+        mkdir -p results
+        cat > results/ragas_results.json <<'EOF'
+        [{"faithfulness":1.0,"answer_relevancy":0.9},{"faithfulness":0.8,"answer_relevancy":0.7}]
+        EOF
+    - name: Export metrics
+      run:
+        image: testkube-ai-metrics-parser:dev
+        imagePullPolicy: IfNotPresent
+        workingDir: /data
+        command:
+          - testkube-ai-metrics-parser
+        args:
+          - ragas
+          - -i
+          - results/ragas_results.json
+          - -o
+          - results/metrics.lp
+          - --stdout
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+    - name: Save results
+      condition: always
+      artifacts:
+        paths:
+          - results/*.json
+          - results/*.lp

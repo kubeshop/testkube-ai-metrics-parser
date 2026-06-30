@@ -1,0 +1,40 @@
+{
+  "testCases": [
+    {
+      "name": "test_case_0",
+      "success": false,
+      "metricsData": [
+        {
+          "name": "Answer Relevancy",
+          "score": 0.9,
+          "threshold": 0.5,
+          "success": true,
+          "evaluationModel": "gpt-4o",
+          "evaluationCost": 0.001
+        },
+        {
+          "name": "Faithfulness",
+          "score": 0.4,
+          "threshold": 0.5,
+          "success": false,
+          "evaluationModel": "gpt-4o",
+          "evaluationCost": 0.002
+        }
+      ]
+    },
+    {
+      "name": "test_case_1",
+      "success": true,
+      "metricsData": [
+        {
+          "name": "Answer Relevancy",
+          "score": 0.8,
+          "threshold": 0.5,
+          "success": true,
+          "evaluationModel": "gpt-4o",
+          "evaluationCost": 0.001
+        }
+      ]
+    }
+  ]
+}

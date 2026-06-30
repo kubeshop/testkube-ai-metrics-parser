@@ -1,0 +1,2 @@
+lm_eval,filter=flexible_extract,task=gsm8k exact_match=0.8
+lm_eval,filter=strict_match,task=gsm8k exact_match=0

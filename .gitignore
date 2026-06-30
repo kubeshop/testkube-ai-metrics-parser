@@ -1,0 +1,5 @@
+/bin/
+/dist/
+*.lp
+coverage.out
+.env

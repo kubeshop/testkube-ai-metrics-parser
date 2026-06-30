@@ -1,0 +1,79 @@
+# DeepEval via Path 1: no fork, no code changes to the test style. We set
+# DEEPEVAL_RESULTS_FOLDER so `deepeval test run` writes its documented
+# test_run_*.json export, then testkube-ai-metrics-parser parses that public file.
+apiVersion: testworkflows.testkube.io/v1
+kind: TestWorkflow
+metadata:
+  name: deepeval-getting-started
+  labels:
+    type: ai
+spec:
+  content:
+    files:
+      - path: /data/test_evals.py
+        content: |
+          from deepeval import assert_test
+          from deepeval.metrics import AnswerRelevancyMetric
+          from deepeval.test_case import LLMTestCase
+
+          def test_answer_relevancy():
+              metric = AnswerRelevancyMetric(threshold=0.5)
+              tc = LLMTestCase(
+                  input="What if these shoes don't fit?",
+                  actual_output="You have 30 days to get a full refund at no extra cost.",
+                  retrieval_context=["All customers are eligible for a 30 day full refund at no extra cost."],
+              )
+              assert_test(tc, [metric])
+  container:
+    workingDir: /data
+    image: python:3.12-slim
+    env:
+      - name: HOME
+        value: /data
+      - name: DEEPEVAL_RESULTS_FOLDER
+        value: /data/results
+      - name: DEEPEVAL_TELEMETRY_OPT_OUT
+        value: "YES"
+      - name: OPENAI_API_KEY
+        value: '{{credential("OPENAI_API_KEY")}}'
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  steps:
+    - name: Run deepeval
+      shell: |
+        set -e
+        pip install --no-cache-dir -U deepeval
+        deepeval test run test_evals.py
+    - name: Export metrics
+      condition: always
+      # Use run.command/args (not shell) plus workingDir + securityContext so
+      # Testkube skips registry image inspection and uses the image loaded into
+      # the cluster via `minikube image load`. imagePullPolicy alone is not
+      # enough: the worker inspects the image at scheduling time unless
+      # command + workingDir + runAsGroup are all set (NeedsImageData == false).
+      run:
+        image: testkube-ai-metrics-parser:dev
+        imagePullPolicy: IfNotPresent
+        workingDir: /data
+        command:
+          - testkube-ai-metrics-parser
+        args:
+          - deepeval
+          - -i
+          - results/test_run_*.json
+          - -o
+          - results/metrics.lp
+          - --tag
+          - suite=getting-started
+          - --stdout
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+    - name: Save results
+      condition: always
+      artifacts:
+        paths:
+          - results/**/*.json
+          - results/*.lp

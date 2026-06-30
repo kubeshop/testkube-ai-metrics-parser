@@ -1,0 +1,18 @@
+[
+  {
+    "user_input": "Who wrote Hamlet?",
+    "retrieved_contexts": ["Shakespeare wrote the play Hamlet around 1600."],
+    "response": "Hamlet was written by William Shakespeare.",
+    "reference": "William Shakespeare",
+    "faithfulness": 1.0,
+    "answer_relevancy": 1.0
+  },
+  {
+    "user_input": "What is the capital of Sweden?",
+    "retrieved_contexts": ["Stockholm is the capital and largest city of Sweden."],
+    "response": "The capital of Sweden is Stockholm.",
+    "reference": "Stockholm",
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.8
+  }
+]
