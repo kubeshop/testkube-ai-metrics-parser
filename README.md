@@ -35,6 +35,18 @@ docker run --rm -v "$PWD:/data" -w /data \
   docker.io/kubeshop/testkube-ai-metrics-parser:latest ragas --stdout
 ```
 
+Published image tags:
+
+| Tag | Points at |
+| --- | --- |
+| `latest` | the tip of `main`, rebuilt on every merge |
+| `main-<sha>` | one specific commit — use it to pin or roll back |
+| `vX.Y.Z`, `X` | tagged releases |
+
+`latest` tracks `main` rather than the last release, so the examples in this
+repo always exercise current code. Pin to `main-<sha>` or a release tag where
+you need a build that won't move under you.
+
 ## Usage
 
 ```
