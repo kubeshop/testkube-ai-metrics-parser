@@ -1,0 +1,1 @@
+lm_eval,filter=strict_match,task=gsm8k exact_match=0.5

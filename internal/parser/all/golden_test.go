@@ -37,6 +37,10 @@ func TestGolden(t *testing.T) {
 		{"promptfoo-multi", "promptfoo", "testdata/promptfoo-multi/*.json", nil},
 		{"lmeval-multi", "lm-eval", "testdata/lmeval-multi/*.json", nil},
 		{"deepeval-multi", "deepeval", "testdata/deepeval-multi/*.json", map[string]string{"suite": "rag-quality-gate"}},
+
+		// Unequal shards of one task: the score is weighted by the examples
+		// behind each shard, not averaged per file.
+		{"lmeval-shards", "lm-eval", "testdata/lmeval-shards/*.json", nil},
 	}
 
 	for _, tc := range cases {

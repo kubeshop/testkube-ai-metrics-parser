@@ -156,14 +156,30 @@ func LoadJSON(path string, v any) error {
 
 // Mean accumulates repeated observations of one numeric field, which happens
 // when several input files report the same metric for the same identity.
+//
+// Observations are weighted, because the value a file reports is usually itself
+// an average over that file's examples. Averaging those per-file averages with
+// equal weight would misreport unequal shards: 100 examples scoring 0.8 and 300
+// scoring 0.4 is 0.5 overall, not 0.6.
 type Mean struct {
-	sum   float64
-	count int
+	first       float64
+	weightedSum float64
+	weight      float64
+	count       int
 }
 
-// Add records one observation.
-func (m *Mean) Add(f float64) {
-	m.sum += f
+// Add records one observation covering weight examples. Pass the number of
+// examples behind the value, or 0 when the framework does not report it, which
+// falls back to weighting every observation equally.
+func (m *Mean) Add(value, weight float64) {
+	if weight <= 0 {
+		weight = 1
+	}
+	if m.count == 0 {
+		m.first = value
+	}
+	m.weightedSum += value * weight
+	m.weight += weight
 	m.count++
 }
 
@@ -171,12 +187,13 @@ func (m *Mean) Add(f float64) {
 func (m *Mean) Count() int { return m.count }
 
 // Value returns the lone observation unchanged when only one file contributed,
-// so source values are never rounded, and the rounded mean otherwise.
+// so source values are neither rounded nor perturbed by the weighting
+// arithmetic, and the rounded weighted mean otherwise.
 func (m *Mean) Value() lineprotocol.Value {
 	if m.count <= 1 {
-		return lineprotocol.Float(m.sum)
+		return lineprotocol.Float(m.first)
 	}
-	return lineprotocol.Rounded(m.sum / float64(m.count))
+	return lineprotocol.Rounded(m.weightedSum / m.weight)
 }
 
 // MergeTags returns a new tag map combining user-supplied tags with a parser's

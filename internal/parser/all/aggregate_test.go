@@ -50,6 +50,34 @@ func TestParseLatestUsesNewestFileOnly(t *testing.T) {
 	}
 }
 
+// A file reporting a pre-aggregated score also reports how many examples are
+// behind it, and that count has to weigh the average: two shards of one task
+// scoring 0.8 over 100 examples and 0.4 over 300 is 0.5 overall, not the 0.6 an
+// unweighted per-file average would give.
+func TestParseWeightsScoresByExampleCount(t *testing.T) {
+	records := parseOrFail(t, "lm-eval", parser.Input{Files: []string{"testdata/lmeval-shards/*.json"}})
+
+	if len(records) != 1 {
+		t.Fatalf("got %d records, want 1 (both shards are the same task+filter)", len(records))
+	}
+	if got, want := field(t, records[0], "exact_match"), 0.5; got != want {
+		t.Errorf("exact_match = %v, want %v", got, want)
+	}
+}
+
+// Without a reported example count there is nothing to weigh by, so files
+// contribute equally rather than being dropped.
+func TestParseWeightsEquallyWithoutExampleCounts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.json"), `{"results": {"gsm8k": {"acc": 0.8}}}`)
+	writeFile(t, filepath.Join(dir, "b.json"), `{"results": {"gsm8k": {"acc": 0.4}}}`)
+
+	records := parseOrFail(t, "lm-eval", parser.Input{Files: []string{filepath.Join(dir, "*.json")}})
+	if got, want := field(t, records[0], "acc"), 0.6; got != want {
+		t.Errorf("acc = %v, want %v", got, want)
+	}
+}
+
 // A truncated file (an aborted or timed-out run) must not discard the metrics
 // of its siblings; it is skipped with a warning instead.
 func TestParseSkipsUnparseableFile(t *testing.T) {

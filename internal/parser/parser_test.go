@@ -92,23 +92,27 @@ func TestEachJSONReportsDecodedCount(t *testing.T) {
 	}
 }
 
-// Mean must not round a value that came straight from a single results file;
-// only a genuine average is rounded, to keep float noise out of the output.
+// Mean must weigh each observation by the examples behind it, and must not
+// round or perturb a value that came straight from a single results file.
 func TestMeanValue(t *testing.T) {
+	type obs struct{ value, weight float64 }
 	tests := []struct {
 		name         string
-		observations []float64
+		observations []obs
 		want         float64
 	}{
-		{"single observation passes through", []float64{0.30000000000000004}, 0.30000000000000004},
-		{"average is rounded", []float64{0.8, 0.6}, 0.7},
+		{"single observation passes through", []obs{{0.30000000000000004, 1}}, 0.30000000000000004},
+		{"single weighted observation is not divided", []obs{{0.1, 3}}, 0.1},
+		{"average is rounded", []obs{{0.8, 1}, {0.6, 1}}, 0.7},
+		{"unequal weights shift the mean", []obs{{0.8, 100}, {0.4, 300}}, 0.5},
+		{"a zero weight counts as one", []obs{{0.8, 0}, {0.4, 0}}, 0.6},
 		{"no observations", nil, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var m Mean
 			for _, o := range tt.observations {
-				m.Add(o)
+				m.Add(o.value, o.weight)
 			}
 			if got := m.Value().AsFloat(); got != tt.want {
 				t.Errorf("Value() = %v, want %v", got, tt.want)

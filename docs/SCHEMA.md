@@ -28,8 +28,12 @@ series does not depend on how the framework chose to split its output:
 
 - Counts (`tests`, `passed`, `failed`, `errors`, `total_tokens`, `duration_ms`,
   `cost`) are summed.
-- Scores are averaged over all the observations behind them, weighted by the
-  number of observations rather than by file.
+- Scores are averaged over the examples behind them, never per file. Where a
+  parser reads raw per-example data (DeepEval metric results, Ragas samples)
+  this is inherent. Where a file reports a score already averaged over its own
+  examples (lm-eval, inspect-ai) the file's example count weights it, so two
+  shards of one task scoring 0.8 over 100 examples and 0.4 over 300 report 0.5,
+  not 0.6. If a file omits its example count, files weigh equally.
 - `pass_rate` is recomputed from the summed counts.
 - Structural tags still separate series: two lm-eval tasks stay two records.
 - A value observed in exactly one file is emitted as-is (see the tagging policy
@@ -45,7 +49,8 @@ retain output from previous runs.
 - Measurement: `inspect_eval`
 - Default input: `logs/*.json`
 - Fields: one per scorer metric found in the logs (for example `accuracy`,
-  `stderr`), averaged across logs that report the same scorer
+  `stderr`), averaged across logs that report the same scorer and weighted by
+  each log's `results.completed_samples` (falling back to `total_samples`)
 - Structural tags: none
 
 ## ragas
@@ -71,7 +76,8 @@ retain output from previous runs.
   directory level, not a recursive match)
 - Fields: one per harness metric (for example `exact_match`); `*_stderr` entries
   and the `alias` label are skipped. One record per task+filter identity, unioned
-  across files; repeated identities are averaged.
+  across files; a repeated identity is averaged, weighted by the task's
+  `n-samples.<task>.effective` count (falling back to `original`).
 - Structural tags: `task` (benchmark name), `filter` (the harness filter, split
   out from keys like `exact_match,strict-match`)
 

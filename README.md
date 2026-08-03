@@ -64,13 +64,22 @@ metrics for the run:
 | Kind of field | How files combine |
 | --- | --- |
 | Counts (`tests`, `passed`, `failed`, `errors`, `total_tokens`, `duration_ms`, `cost`) | Summed |
-| Scores (`mean_score`, Ragas columns, Inspect scorers, lm-eval metrics) | Averaged over all underlying observations |
+| Scores (`mean_score`, Ragas columns, Inspect scorers, lm-eval metrics) | Averaged over the examples behind them, not per file |
 | Rates (`pass_rate`) | Recomputed from the summed counts, so a larger shard weighs more |
 
 So a 17-test DeepEval suite reports `tests=17` with the mean score over all 17,
 not whichever file sorted last. Records that carry structural tags stay
 separate: lm-eval keeps one series per `task`+`filter`, and DeepEval one per
 `metric`.
+
+Scores are weighted by example count rather than by file, which matters when
+files cover different numbers of examples. DeepEval and Ragas read raw
+per-example data, so this is automatic. lm-eval and Inspect report a score
+already averaged over their own examples, so their example counts
+(`n-samples.<task>.effective` and `results.completed_samples`) do the weighting:
+two shards of one task scoring 0.8 over 100 examples and 0.4 over 300 report
+0.5, not the 0.6 a per-file average would give. Files that don't report a count
+weigh equally.
 
 A file that fails to parse is skipped with a warning rather than failing the
 export, so one truncated file (from an aborted or timed-out run) doesn't discard
@@ -91,7 +100,8 @@ identity tags (e.g. `--tag model=gpt-4o`).
 
 Reads the matched Inspect AI eval logs and emits one field per scorer metric
 (e.g. `accuracy`, `stderr`) under the `inspect_eval` measurement. A scorer
-reported by several logs is averaged across them.
+reported by several logs is averaged across them, weighted by how many samples
+each log covers.
 
 ```bash
 inspect eval task.py --model openai/gpt-4o-mini --log-dir ./logs --log-format json
@@ -127,9 +137,10 @@ testkube-ai-metrics-parser promptfoo -i results.json -o results.lp --stdout
 
 Reads the matched lm-evaluation-harness results files and emits one field per
 harness metric (e.g. `exact_match`) under `lm_eval`, tagged with `task` and
-`filter`. A sweep that writes one file per task produces one series per task;
-if several files report the same task and filter their values are averaged.
-`*_stderr` entries and the `alias` label are skipped.
+`filter`. A sweep that writes one file per task produces one series per task; if
+several files report the same task and filter their values are averaged,
+weighted by the task's `n-samples` count. `*_stderr` entries and the `alias`
+label are skipped.
 
 ```bash
 lm_eval --model local-chat-completions \

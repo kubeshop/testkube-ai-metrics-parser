@@ -7,5 +7,8 @@
       "acc_norm": 0.8,
       "acc_norm_stderr": 0.03
     }
+  },
+  "n-samples": {
+    "hellaswag": { "original": 10042, "effective": 10042 }
   }
 }

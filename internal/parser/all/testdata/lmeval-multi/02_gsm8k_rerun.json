@@ -7,5 +7,8 @@
       "exact_match,flexible-extract": 0.6,
       "exact_match_stderr,flexible-extract": 0.15
     }
+  },
+  "n-samples": {
+    "gsm8k": { "original": 1319, "effective": 1319 }
   }
 }
