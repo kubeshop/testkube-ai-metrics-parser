@@ -1,0 +1,14 @@
+[
+  {
+    "user_input": "Who wrote Hamlet?",
+    "response": "Hamlet was written by William Shakespeare.",
+    "faithfulness": 1.0,
+    "answer_relevancy": 1.0
+  },
+  {
+    "user_input": "What is the capital of Sweden?",
+    "response": "The capital of Sweden is Stockholm.",
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.8
+  }
+]

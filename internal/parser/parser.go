@@ -22,9 +22,29 @@ type Input struct {
 	// Tags are explicit user-supplied identity tags (--tag key=value), applied
 	// to every emitted record. Parsers merge their own structural tags on top.
 	Tags map[string]string
+	// Latest restricts parsing to the newest matched file instead of
+	// aggregating every match. Use it when the results directory accumulates
+	// output from earlier runs.
+	Latest bool
+	// Warn, when set, receives non-fatal diagnostics such as an input file that
+	// could not be parsed and was skipped.
+	Warn func(msg string)
+}
+
+// warnf reports a non-fatal problem, discarding it when the caller set no Warn.
+func (in Input) warnf(format string, args ...any) {
+	if in.Warn != nil {
+		in.Warn(fmt.Sprintf(format, args...))
+	}
 }
 
 // Parser converts a framework's output into line-protocol records.
+//
+// Parse must fold every file matched by the effective inputs into one run-wide
+// result: counters sum, scores average. Frameworks routinely spread a single
+// run across many files (DeepEval writes one test_run_<ts>.json per test, an
+// lm-eval sweep writes one file per task), and reporting only one of them would
+// undercount the run.
 type Parser interface {
 	Name() string
 	DefaultInputs() []string
@@ -57,7 +77,9 @@ func Names() []string {
 
 // ResolveFiles expands the parser's effective globs (Input.Files or, when that
 // is empty, the parser defaults) into a sorted, de-duplicated list of existing
-// files.
+// files. Sorting is lexicographic, which for the timestamped names frameworks
+// emit (for example DeepEval's test_run_<ts>.json) is also chronological, so
+// Input.Latest can keep the newest file by taking the tail.
 func ResolveFiles(in Input, p Parser) ([]string, error) {
 	globs := in.Files
 	if len(globs) == 0 {
@@ -78,17 +100,46 @@ func ResolveFiles(in Input, p Parser) ([]string, error) {
 		}
 	}
 	sort.Strings(out)
+	if in.Latest && len(out) > 1 {
+		out = out[len(out)-1:]
+	}
 	return out, nil
 }
 
-// Latest returns the lexicographically last file, which for timestamp-prefixed
-// names (for example DeepEval's test_run_<ts>.json) is the most recent run.
-// Returns "" for an empty slice.
-func Latest(files []string) string {
-	if len(files) == 0 {
-		return ""
+// EachJSON decodes every file matched by the parser's effective inputs, in
+// sorted order, and hands each decoded document to fn so the parser can fold it
+// into a run-wide aggregate. It returns the number of documents decoded.
+//
+// A file that fails to decode is skipped with a warning rather than failing the
+// whole export -- a single truncated file (an aborted or timed-out run) should
+// not discard the metrics of every sibling file. An error is returned only when
+// no file could be decoded at all.
+func EachJSON[T any](in Input, p Parser, fn func(doc T)) (int, error) {
+	files, err := ResolveFiles(in, p)
+	if err != nil {
+		return 0, err
 	}
-	return files[len(files)-1]
+	var (
+		decoded  int
+		firstErr error
+	)
+	for _, f := range files {
+		var doc T
+		if err := LoadJSON(f, &doc); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			// The error already names the file.
+			in.warnf("skipping unreadable input: %v", err)
+			continue
+		}
+		decoded++
+		fn(doc)
+	}
+	if decoded == 0 && firstErr != nil {
+		return 0, firstErr
+	}
+	return decoded, nil
 }
 
 // LoadJSON reads and unmarshals a JSON file into v.
@@ -101,6 +152,31 @@ func LoadJSON(path string, v any) error {
 		return fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return nil
+}
+
+// Mean accumulates repeated observations of one numeric field, which happens
+// when several input files report the same metric for the same identity.
+type Mean struct {
+	sum   float64
+	count int
+}
+
+// Add records one observation.
+func (m *Mean) Add(f float64) {
+	m.sum += f
+	m.count++
+}
+
+// Count returns how many observations were recorded.
+func (m *Mean) Count() int { return m.count }
+
+// Value returns the lone observation unchanged when only one file contributed,
+// so source values are never rounded, and the rounded mean otherwise.
+func (m *Mean) Value() lineprotocol.Value {
+	if m.count <= 1 {
+		return lineprotocol.Float(m.sum)
+	}
+	return lineprotocol.Rounded(m.sum / float64(m.count))
 }
 
 // MergeTags returns a new tag map combining user-supplied tags with a parser's

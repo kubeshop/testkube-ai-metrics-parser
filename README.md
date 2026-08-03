@@ -44,14 +44,42 @@ testkube-ai-metrics-parser <framework> [flags]
   -o, --output string     output .lp file path (default "metrics.lp")
   -m, --measurement       override the measurement name
       --tag key=value     identity tag (repeatable)
+      --latest            parse only the newest matched file instead of aggregating all
       --fail-on-empty     exit non-zero if no metrics are found
       --stdout            also echo the line protocol to stdout
 ```
 
 Each framework has a sensible default input glob (see
 [docs/SCHEMA.md](docs/SCHEMA.md)), so `-i` is optional when your files are in
-the conventional location. When a glob matches several files, the most recent
-one is used.
+the conventional location.
+
+### Multiple result files
+
+A single evaluation run routinely produces more than one file: DeepEval under
+pytest writes one `test_run_<timestamp>.json` per test case, an lm-eval sweep
+writes one file per task, and sharded runs write one file per shard. All files
+matched by the effective input globs are parsed and folded into **one** set of
+metrics for the run:
+
+| Kind of field | How files combine |
+| --- | --- |
+| Counts (`tests`, `passed`, `failed`, `errors`, `total_tokens`, `duration_ms`, `cost`) | Summed |
+| Scores (`mean_score`, Ragas columns, Inspect scorers, lm-eval metrics) | Averaged over all underlying observations |
+| Rates (`pass_rate`) | Recomputed from the summed counts, so a larger shard weighs more |
+
+So a 17-test DeepEval suite reports `tests=17` with the mean score over all 17,
+not whichever file sorted last. Records that carry structural tags stay
+separate: lm-eval keeps one series per `task`+`filter`, and DeepEval one per
+`metric`.
+
+A file that fails to parse is skipped with a warning rather than failing the
+export, so one truncated file (from an aborted or timed-out run) doesn't discard
+the rest. The command only fails if no file could be parsed at all.
+
+Pass `--latest` to parse just the newest matched file, which is what you want
+when the results directory is persisted across runs and still holds output from
+earlier ones. Files are ordered lexicographically, which matches chronological
+order for the timestamped names these frameworks emit.
 
 ## Examples per framework
 
@@ -61,8 +89,9 @@ identity tags (e.g. `--tag model=gpt-4o`).
 
 ### inspect-ai
 
-Reads the latest Inspect AI eval log and emits one field per scorer metric
-(e.g. `accuracy`, `stderr`) under the `inspect_eval` measurement.
+Reads the matched Inspect AI eval logs and emits one field per scorer metric
+(e.g. `accuracy`, `stderr`) under the `inspect_eval` measurement. A scorer
+reported by several logs is averaged across them.
 
 ```bash
 inspect eval task.py --model openai/gpt-4o-mini --log-dir ./logs --log-format json
@@ -72,8 +101,9 @@ testkube-ai-metrics-parser inspect-ai -i 'logs/*.json' -o metrics/eval.lp --stdo
 
 ### ragas
 
-Reads the per-sample results array and emits the mean of every numeric column
-(e.g. `faithfulness`, `answer_relevancy`) under `ragas_eval`.
+Reads the per-sample results arrays and emits the mean of every numeric column
+(e.g. `faithfulness`, `answer_relevancy`) under `ragas_eval`. Samples from all
+matched files feed the same means, so sharding a run doesn't change the result.
 
 ```bash
 # ragas_eval.py writes results/ragas_results.json
@@ -84,7 +114,8 @@ testkube-ai-metrics-parser ragas -i results/ragas_results.json -o results/metric
 ### promptfoo
 
 Summarizes `results.stats` into `successes`, `failures`, `errors`, `pass_rate`,
-`total_tokens`, and `duration_ms` under `promptfoo_eval`.
+`total_tokens`, and `duration_ms` under `promptfoo_eval`. Counts are totalled
+over all matched files and `pass_rate` is derived from those totals.
 
 ```bash
 npx promptfoo@latest eval -o results.json
@@ -94,9 +125,11 @@ testkube-ai-metrics-parser promptfoo -i results.json -o results.lp --stdout
 
 ### lm-eval
 
-Reads the latest lm-evaluation-harness results file and emits one field per
+Reads the matched lm-evaluation-harness results files and emits one field per
 harness metric (e.g. `exact_match`) under `lm_eval`, tagged with `task` and
-`filter`. `*_stderr` entries and the `alias` label are skipped.
+`filter`. A sweep that writes one file per task produces one series per task;
+if several files report the same task and filter their values are averaged.
+`*_stderr` entries and the `alias` label are skipped.
 
 ```bash
 lm_eval --model local-chat-completions \
@@ -113,12 +146,17 @@ Set `DEEPEVAL_RESULTS_FOLDER` so DeepEval writes its documented
 records (`mean_score`, `tests`, `passed`, `failed`, `errors`, `cost`, tagged
 `metric=<name>`) plus a single rollup record, under `deepeval`.
 
+Running under pytest writes one `test_run_<timestamp>.json` per test case, so
+the glob below normally matches many files; they are aggregated into the totals
+for the suite.
+
 ```bash
 export DEEPEVAL_RESULTS_FOLDER=./results
 deepeval test run test_evals.py
 testkube-ai-metrics-parser deepeval -i 'results/test_run_*.json' -o results/metrics.lp --tag model=gpt-4o --stdout
-# -> deepeval,metric=answer_relevancy cost=0.004848,errors=0i,failed=0i,mean_score=1,passed=1i,tests=1i
-# -> deepeval errors=0i,failed=0i,passed=1i
+# aggregating 17 input files (results/test_run_20260731_124833.json ... results/test_run_20260731_130032.json)
+# -> deepeval,metric=answer_relevancy,model=gpt-4o cost=0.003853,errors=0i,failed=2i,mean_score=0.882353,passed=15i,tests=17i
+# -> deepeval,model=gpt-4o errors=0i,failed=4i,passed=47i
 ```
 
 ## Using it in a Testkube TestWorkflow

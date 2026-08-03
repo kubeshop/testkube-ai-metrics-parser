@@ -1,0 +1,11 @@
+{
+  "results": {
+    "hellaswag": {
+      "alias": "hellaswag",
+      "acc": 0.75,
+      "acc_stderr": 0.04,
+      "acc_norm": 0.8,
+      "acc_norm_stderr": 0.03
+    }
+  }
+}

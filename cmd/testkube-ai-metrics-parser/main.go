@@ -54,6 +54,7 @@ func run(args []string, stdout, stderr *os.File) int {
 		measurement string
 		failOnEmpty bool
 		toStdout    bool
+		latest      bool
 	)
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -66,6 +67,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	fs.Var(&tagArgs, "tag", "identity tag key=value (repeatable)")
 	fs.BoolVar(&failOnEmpty, "fail-on-empty", false, "exit non-zero if no metrics are found")
 	fs.BoolVar(&toStdout, "stdout", false, "also echo the line protocol to stdout")
+	fs.BoolVar(&latest, "latest", false, "parse only the newest matched file instead of aggregating all")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -76,7 +78,15 @@ func run(args []string, stdout, stderr *os.File) int {
 		return 2
 	}
 
-	records, err := p.Parse(parser.Input{Files: inputs, Tags: tags})
+	input := parser.Input{
+		Files:  inputs,
+		Tags:   tags,
+		Latest: latest,
+		Warn:   func(msg string) { fmt.Fprintln(stderr, "warning:", msg) },
+	}
+	reportInputs(stderr, input, p)
+
+	records, err := p.Parse(input)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
@@ -115,6 +125,23 @@ func writeOutput(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+// reportInputs echoes the files the parser is about to read, so a CI log shows
+// whether a glob picked up the whole run or only part of it. Silent for the
+// ordinary single-file case.
+func reportInputs(w *os.File, in parser.Input, p parser.Parser) {
+	matched := in
+	matched.Latest = false
+	files, err := parser.ResolveFiles(matched, p)
+	if err != nil || len(files) < 2 {
+		return
+	}
+	if in.Latest {
+		fmt.Fprintf(w, "using newest of %d matched files: %s\n", len(files), files[len(files)-1])
+		return
+	}
+	fmt.Fprintf(w, "aggregating %d input files (%s ... %s)\n", len(files), files[0], files[len(files)-1])
+}
+
 func effectiveInputs(inputs []string, p parser.Parser) []string {
 	if len(inputs) > 0 {
 		return inputs
@@ -151,8 +178,14 @@ Flags:
   -o, --output string     output .lp file path (default "metrics.lp")
   -m, --measurement       override the measurement name
       --tag key=value     identity tag (repeatable)
+      --latest            parse only the newest matched file instead of aggregating all
       --fail-on-empty     exit non-zero if no metrics are found
       --stdout            also echo the line protocol to stdout
+
+When an input glob matches several files they are all parsed and folded into
+one set of metrics: counts are totalled, scores averaged. Pass --latest to
+report only the newest file, for example when the results directory keeps
+output from previous runs.
 
 Examples:
   testkube-ai-metrics-parser inspect-ai -i 'logs/*.json' -o metrics/eval.lp --stdout

@@ -1,0 +1,11 @@
+{
+  "results": {
+    "gsm8k": {
+      "alias": "gsm8k",
+      "exact_match,strict-match": 0.2,
+      "exact_match_stderr,strict-match": 0.1,
+      "exact_match,flexible-extract": 0.6,
+      "exact_match_stderr,flexible-extract": 0.15
+    }
+  }
+}

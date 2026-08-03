@@ -17,50 +17,56 @@ func (inspectParser) Name() string { return "inspect-ai" }
 
 func (inspectParser) DefaultInputs() []string { return []string{"logs/*.json"} }
 
-// Parse reads the latest Inspect log and emits each scorer metric. Inspect
+// Parse reads every matched Inspect log and emits each scorer metric. Inspect
 // records scores as {"<metric>": {"value": <number>, ...}} nested under
 // results/scores, so we collect every object of that shape anywhere in the log.
+// Inspect writes one log per eval task, so a scorer reported by several logs is
+// averaged across them; keep the logs of unrelated tasks in separate
+// directories (or pass a narrower --input) when they should stay separate
+// series.
 func (p inspectParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
-	files, err := parser.ResolveFiles(in, p)
-	if err != nil {
+	means := map[string]*parser.Mean{}
+	collect := func(data any) {
+		// One log may repeat a scorer at several nesting levels; only the first
+		// occurrence per log counts so the mean weighs each log equally.
+		seen := map[string]bool{}
+		jsonutil.WalkMaps(data, func(m map[string]any) {
+			for k, v := range m {
+				child, ok := v.(map[string]any)
+				if !ok {
+					continue
+				}
+				raw, ok := child["value"]
+				if !ok {
+					continue
+				}
+				f, ok := jsonutil.Float(raw)
+				if !ok {
+					continue
+				}
+				name := naming.Normalize(k)
+				if name == "" || seen[name] {
+					continue
+				}
+				seen[name] = true
+				if means[name] == nil {
+					means[name] = &parser.Mean{}
+				}
+				means[name].Add(f)
+			}
+		})
+	}
+
+	if _, err := parser.EachJSON(in, p, collect); err != nil {
 		return nil, err
 	}
-	if len(files) == 0 {
+	if len(means) == 0 {
 		return nil, nil
 	}
 
-	var data any
-	if err := parser.LoadJSON(parser.Latest(files), &data); err != nil {
-		return nil, err
-	}
-
-	fields := map[string]lineprotocol.Value{}
-	jsonutil.WalkMaps(data, func(m map[string]any) {
-		for k, v := range m {
-			child, ok := v.(map[string]any)
-			if !ok {
-				continue
-			}
-			raw, ok := child["value"]
-			if !ok {
-				continue
-			}
-			f, ok := jsonutil.Float(raw)
-			if !ok {
-				continue
-			}
-			name := naming.Normalize(k)
-			if name == "" {
-				continue
-			}
-			if _, exists := fields[name]; !exists {
-				fields[name] = lineprotocol.Float(f)
-			}
-		}
-	})
-
-	if len(fields) == 0 {
-		return nil, nil
+	fields := make(map[string]lineprotocol.Value, len(means))
+	for name, m := range means {
+		fields[name] = m.Value()
 	}
 	return []lineprotocol.Record{{
 		Measurement: measurement,

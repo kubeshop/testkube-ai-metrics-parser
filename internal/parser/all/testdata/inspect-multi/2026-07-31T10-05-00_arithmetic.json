@@ -1,0 +1,14 @@
+{
+  "eval": { "task": "arithmetic", "model": "openai/gpt-5.4-mini" },
+  "results": {
+    "scores": [
+      {
+        "name": "match",
+        "metrics": {
+          "accuracy": { "name": "accuracy", "value": 0.6 },
+          "stderr": { "name": "stderr", "value": 0.1 }
+        }
+      }
+    ]
+  }
+}

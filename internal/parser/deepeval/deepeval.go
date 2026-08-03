@@ -20,7 +20,6 @@ type deepEvalParser struct{}
 func (deepEvalParser) Name() string { return "deepeval" }
 
 func (deepEvalParser) DefaultInputs() []string {
-	// Timestamped exports sort chronologically; Latest() picks the newest run.
 	return []string{"test_run_*.json", "*/test_run_*.json", "results/test_run_*.json"}
 }
 
@@ -31,64 +30,61 @@ type agg struct {
 	cost           float64
 }
 
-// Parse aggregates per-metric scores from the latest test run. It recursively
-// finds every MetricData-shaped object (one carrying name + score plus success
-// or threshold), which tolerates the camel/snake field-alias differences that
-// have appeared across DeepEval versions.
+// Parse aggregates per-metric scores over every matched test run. Running
+// DeepEval under pytest writes one test_run_<ts>.json per test case, so the
+// files matched by a single glob are usually the individual test cases of one
+// suite and belong in one set of totals.
+//
+// Within a file it recursively finds every MetricData-shaped object (one
+// carrying name + score plus success or threshold), which tolerates the
+// camel/snake field-alias differences that have appeared across DeepEval
+// versions.
 func (p deepEvalParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
-	files, err := parser.ResolveFiles(in, p)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, nil
-	}
-
-	var data any
-	if err := parser.LoadJSON(parser.Latest(files), &data); err != nil {
-		return nil, err
-	}
-
 	metrics := map[string]*agg{}
-	jsonutil.WalkMaps(data, func(m map[string]any) {
-		name, ok := jsonutil.String(m["name"])
-		if !ok {
-			return
-		}
-		_, hasScore := m["score"]
-		_, hasSuccess := m["success"]
-		_, hasThreshold := m["threshold"]
-		if !hasScore || (!hasSuccess && !hasThreshold) {
-			return
-		}
-
-		key := naming.Normalize(name)
-		if key == "" {
-			return
-		}
-		a := metrics[key]
-		if a == nil {
-			a = &agg{}
-			metrics[key] = a
-		}
-
-		score, scoreOK := jsonutil.Float(m["score"])
-		switch {
-		case !scoreOK:
-			a.errors++
-		default:
-			a.scores = append(a.scores, score)
-			if success, _ := jsonutil.Bool(m["success"]); success {
-				a.passed++
-			} else {
-				a.failed++
+	collect := func(data any) {
+		jsonutil.WalkMaps(data, func(m map[string]any) {
+			name, ok := jsonutil.String(m["name"])
+			if !ok {
+				return
 			}
-		}
-		if cost, ok := jsonutil.Float(firstPresent(m, "evaluationCost", "evaluation_cost")); ok {
-			a.cost += cost
-		}
-	})
+			_, hasScore := m["score"]
+			_, hasSuccess := m["success"]
+			_, hasThreshold := m["threshold"]
+			if !hasScore || (!hasSuccess && !hasThreshold) {
+				return
+			}
 
+			key := naming.Normalize(name)
+			if key == "" {
+				return
+			}
+			a := metrics[key]
+			if a == nil {
+				a = &agg{}
+				metrics[key] = a
+			}
+
+			score, scoreOK := jsonutil.Float(m["score"])
+			switch {
+			case !scoreOK:
+				a.errors++
+			default:
+				a.scores = append(a.scores, score)
+				if success, _ := jsonutil.Bool(m["success"]); success {
+					a.passed++
+				} else {
+					a.failed++
+				}
+			}
+			if cost, ok := jsonutil.Float(firstPresent(m, "evaluationCost", "evaluation_cost")); ok {
+				a.cost += cost
+			}
+		})
+	}
+
+	if _, err := parser.EachJSON(in, p, collect); err != nil {
+		return nil, err
+	}
 	if len(metrics) == 0 {
 		return nil, nil
 	}
