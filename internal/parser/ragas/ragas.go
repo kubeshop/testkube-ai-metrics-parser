@@ -16,43 +16,34 @@ func (ragasParser) Name() string { return "ragas" }
 
 func (ragasParser) DefaultInputs() []string { return []string{"results/ragas_results.json"} }
 
-// Parse reads the per-sample results array (as written by
+// Parse reads the per-sample results arrays (as written by
 // result.to_pandas().to_json(orient="records")) and emits the mean of every
 // numeric column, so adding a new Ragas metric needs no code change here.
+// Samples from every matched file feed the same means, which makes a sharded
+// evaluation equivalent to the same samples written to one file.
 func (p ragasParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
-	files, err := parser.ResolveFiles(in, p)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, nil
-	}
-
-	var samples []map[string]any
-	if err := parser.LoadJSON(parser.Latest(files), &samples); err != nil {
-		return nil, err
-	}
-	if len(samples) == 0 {
-		return nil, nil
-	}
-
 	sums := map[string]float64{}
 	counts := map[string]int{}
-	for _, sample := range samples {
-		for k, v := range sample {
-			f, ok := jsonutil.Float(v)
-			if !ok {
-				continue
+	collect := func(samples []map[string]any) {
+		for _, sample := range samples {
+			for k, v := range sample {
+				f, ok := jsonutil.Float(v)
+				if !ok {
+					continue
+				}
+				name := naming.Normalize(k)
+				if name == "" {
+					continue
+				}
+				sums[name] += f
+				counts[name]++
 			}
-			name := naming.Normalize(k)
-			if name == "" {
-				continue
-			}
-			sums[name] += f
-			counts[name]++
 		}
 	}
 
+	if _, err := parser.EachJSON(in, p, collect); err != nil {
+		return nil, err
+	}
 	if len(sums) == 0 {
 		return nil, nil
 	}

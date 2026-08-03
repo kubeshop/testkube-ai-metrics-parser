@@ -15,31 +15,43 @@ func (promptfooParser) Name() string { return "promptfoo" }
 
 func (promptfooParser) DefaultInputs() []string { return []string{"results.json"} }
 
-// Parse reads results.json and summarizes results.stats: success/failure/error
-// counts, a derived pass rate, total token usage, and run duration.
+// Parse summarizes results.stats from every matched results file:
+// success/failure/error counts, a derived pass rate, total token usage, and run
+// duration. Counts, tokens, and duration are totals over all files, and the
+// pass rate is recomputed from those totals rather than averaged, so a shard
+// with more cases weighs proportionally more.
 func (p promptfooParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
-	files, err := parser.ResolveFiles(in, p)
-	if err != nil {
+	var (
+		successes, failures, errors int64
+		tokens, durationMs          int64
+		haveTokens, haveDuration    bool
+		runs                        int
+	)
+	collect := func(root map[string]any) {
+		stats := nestedMap(root, "results", "stats")
+		if stats == nil {
+			return
+		}
+		runs++
+		successes += intField(stats, "successes")
+		failures += intField(stats, "failures")
+		errors += intField(stats, "errors")
+		if t := nestedMap(stats, "tokenUsage"); t != nil {
+			haveTokens = true
+			tokens += intField(t, "total")
+		}
+		if v, ok := jsonutil.Float(stats["durationMs"]); ok {
+			haveDuration = true
+			durationMs += int64(v)
+		}
+	}
+
+	if _, err := parser.EachJSON(in, p, collect); err != nil {
 		return nil, err
 	}
-	if len(files) == 0 {
+	if runs == 0 {
 		return nil, nil
 	}
-
-	var root map[string]any
-	if err := parser.LoadJSON(parser.Latest(files), &root); err != nil {
-		return nil, err
-	}
-
-	stats := nestedMap(root, "results", "stats")
-	if stats == nil {
-		return nil, nil
-	}
-
-	successes := intField(stats, "successes")
-	failures := intField(stats, "failures")
-	errors := intField(stats, "errors")
-	total := successes + failures + errors
 
 	fields := map[string]lineprotocol.Value{
 		"successes": lineprotocol.Int(successes),
@@ -47,16 +59,15 @@ func (p promptfooParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
 		"errors":    lineprotocol.Int(errors),
 	}
 	passRate := 0.0
-	if total > 0 {
+	if total := successes + failures + errors; total > 0 {
 		passRate = float64(successes) / float64(total)
 	}
 	fields["pass_rate"] = lineprotocol.Rounded(passRate)
-
-	if tokens := nestedMap(stats, "tokenUsage"); tokens != nil {
-		fields["total_tokens"] = lineprotocol.Int(intField(tokens, "total"))
+	if haveTokens {
+		fields["total_tokens"] = lineprotocol.Int(tokens)
 	}
-	if v, ok := jsonutil.Float(stats["durationMs"]); ok {
-		fields["duration_ms"] = lineprotocol.Int(int64(v))
+	if haveDuration {
+		fields["duration_ms"] = lineprotocol.Int(durationMs)
 	}
 
 	return []lineprotocol.Record{{

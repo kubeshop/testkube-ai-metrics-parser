@@ -1,0 +1,16 @@
+{
+  "eval": { "task": "capitals", "model": "openai/gpt-5.4-mini" },
+  "results": {
+    "total_samples": 25,
+    "completed_samples": 25,
+    "scores": [
+      {
+        "name": "includes",
+        "metrics": {
+          "accuracy": { "name": "accuracy", "value": 1.0 },
+          "stderr": { "name": "stderr", "value": 0.0 }
+        }
+      }
+    ]
+  }
+}

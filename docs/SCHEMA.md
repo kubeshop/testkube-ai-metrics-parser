@@ -20,20 +20,45 @@ you can segment and filter by in Insights. Only numeric fields are ingested
 - Computed values (means, rates) are rounded to 6 decimal places; values read
   directly from framework output are emitted as-is.
 
+## Multiple input files
+
+One evaluation run often spans several output files. Every file matched by the
+effective input globs contributes to a single run-wide result, so the metric
+series does not depend on how the framework chose to split its output:
+
+- Counts (`tests`, `passed`, `failed`, `errors`, `total_tokens`, `duration_ms`,
+  `cost`) are summed.
+- Scores are averaged over the examples behind them, never per file. Where a
+  parser reads raw per-example data (DeepEval metric results, Ragas samples)
+  this is inherent. Where a file reports a score already averaged over its own
+  examples (lm-eval, inspect-ai) the file's example count weights it, so two
+  shards of one task scoring 0.8 over 100 examples and 0.4 over 300 report 0.5,
+  not 0.6. If a file omits its example count, files weigh equally.
+- `pass_rate` is recomputed from the summed counts.
+- Structural tags still separate series: two lm-eval tasks stay two records.
+- A value observed in exactly one file is emitted as-is (see the tagging policy
+  above); only a genuine average is rounded.
+
+Unparseable files are skipped with a warning, leaving the rest of the run
+intact; the command fails only when no file could be parsed. `--latest`
+restricts parsing to the newest matched file, for results directories that
+retain output from previous runs.
+
 ## inspect-ai
 
 - Measurement: `inspect_eval`
-- Default input: `logs/*.json` (latest)
-- Fields: one per scorer metric found in the log (for example `accuracy`,
-  `stderr`)
+- Default input: `logs/*.json`
+- Fields: one per scorer metric found in the logs (for example `accuracy`,
+  `stderr`), averaged across logs that report the same scorer and weighted by
+  each log's `results.completed_samples` (falling back to `total_samples`)
 - Structural tags: none
 
 ## ragas
 
 - Measurement: `ragas_eval`
 - Default input: `results/ragas_results.json`
-- Fields: the mean of every numeric column in the per-sample results (for
-  example `faithfulness`, `answer_relevancy`)
+- Fields: the mean of every numeric column across the per-sample results of all
+  matched files (for example `faithfulness`, `answer_relevancy`)
 - Structural tags: none
 
 ## promptfoo
@@ -41,15 +66,18 @@ you can segment and filter by in Insights. Only numeric fields are ingested
 - Measurement: `promptfoo_eval`
 - Default input: `results.json`
 - Fields: `successes`, `failures`, `errors`, `pass_rate`, `total_tokens`,
-  `duration_ms`
+  `duration_ms`, totalled over all matched files
 - Structural tags: none
 
 ## lm-eval
 
 - Measurement: `lm_eval`
-- Default input: `results/**/*.json` (latest)
+- Default input: `results/**/*.json`, `results/*.json` (`**` is a single
+  directory level, not a recursive match)
 - Fields: one per harness metric (for example `exact_match`); `*_stderr` entries
-  and the `alias` label are skipped
+  and the `alias` label are skipped. One record per task+filter identity, unioned
+  across files; a repeated identity is averaged, weighted by the task's
+  `n-samples.<task>.effective` count (falling back to `original`).
 - Structural tags: `task` (benchmark name), `filter` (the harness filter, split
   out from keys like `exact_match,strict-match`)
 
@@ -57,7 +85,8 @@ you can segment and filter by in Insights. Only numeric fields are ingested
 
 - Measurement: `deepeval`
 - Default input: `test_run_*.json` (the documented export produced by setting
-  `DEEPEVAL_RESULTS_FOLDER`; the latest run is used). The internal
+  `DEEPEVAL_RESULTS_FOLDER`). Running under pytest writes one file per test
+  case, and all of them are aggregated into the suite's totals. The internal
   `.deepeval-cache.json` can be parsed via an explicit `--input` but is not the
   default because it is an internal, version-unstable format.
 - Per-metric records: fields `mean_score`, `tests`, `passed`, `failed`,

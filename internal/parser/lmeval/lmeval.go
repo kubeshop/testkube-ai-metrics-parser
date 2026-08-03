@@ -18,68 +18,112 @@ func (lmEvalParser) Name() string { return "lm-eval" }
 
 func (lmEvalParser) DefaultInputs() []string { return []string{"results/**/*.json", "results/*.json"} }
 
-// Parse reads the latest results file and walks results.<task>, emitting each
-// numeric metric. lm-eval encodes the filter as a suffix on the metric key
-// ("exact_match,strict-match"), which we split into a `filter` tag so multiple
-// filters share one metric key and stay segmentable. Stderr entries and the
-// "alias" label are skipped.
+// series collects one task+filter identity across every matched results file.
+type series struct {
+	tags   map[string]string
+	fields map[string]*parser.Mean
+}
+
+// Parse walks results.<task> in every matched results file, emitting each
+// numeric metric. A harness sweep writes one file per task, so the files are
+// unioned by task+filter identity; when several files do report the same
+// identity (a re-run, or the same task in two shards) their values are averaged
+// weighted by the examples behind each one. lm-eval encodes the filter as a
+// suffix on the metric key ("exact_match,strict-match"), which we split into a
+// `filter` tag so multiple filters share one metric key and stay segmentable.
+// Stderr entries and the "alias" label are skipped.
 func (p lmEvalParser) Parse(in parser.Input) ([]lineprotocol.Record, error) {
-	files, err := parser.ResolveFiles(in, p)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, nil
+	all := map[string]*series{}
+	collect := func(root map[string]any) {
+		results, ok := root["results"].(map[string]any)
+		if !ok {
+			return
+		}
+		weights := taskWeights(root)
+		for task, raw := range results {
+			metrics, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			for key, val := range metrics {
+				if key == "alias" || strings.Contains(key, "stderr") {
+					continue
+				}
+				f, ok := jsonutil.Float(val)
+				if !ok {
+					continue
+				}
+
+				metricName, filter := splitMetric(key)
+				id := task + "\x00" + filter
+				s, ok := all[id]
+				if !ok {
+					structural := map[string]string{"task": task}
+					if filter != "" {
+						structural["filter"] = filter
+					}
+					s = &series{
+						tags:   parser.MergeTags(in.Tags, structural),
+						fields: map[string]*parser.Mean{},
+					}
+					all[id] = s
+				}
+				name := naming.Normalize(metricName)
+				if s.fields[name] == nil {
+					s.fields[name] = &parser.Mean{}
+				}
+				s.fields[name].Add(f, weights[task])
+			}
+		}
 	}
 
-	var root map[string]any
-	if err := parser.LoadJSON(parser.Latest(files), &root); err != nil {
+	if _, err := parser.EachJSON(in, p, collect); err != nil {
 		return nil, err
 	}
-	results, ok := root["results"].(map[string]any)
+
+	out := make([]lineprotocol.Record, 0, len(all))
+	for _, s := range all {
+		if len(s.fields) == 0 {
+			continue
+		}
+		fields := make(map[string]lineprotocol.Value, len(s.fields))
+		for name, m := range s.fields {
+			fields[name] = m.Value()
+		}
+		out = append(out, lineprotocol.Record{Measurement: measurement, Tags: s.tags, Fields: fields})
+	}
+	return out, nil
+}
+
+// taskWeights reads the per-task example counts lm-eval records under
+// `n-samples`, used to weight a task's score when several files report it. Tasks
+// without a count (a group row, or an older harness version) are left out, and
+// weigh equally.
+func taskWeights(root map[string]any) map[string]float64 {
+	counts, ok := root["n-samples"].(map[string]any)
 	if !ok {
-		return nil, nil
+		return nil
 	}
-
-	// Key records by task+filter so all metrics for one identity merge.
-	recs := map[string]*lineprotocol.Record{}
-	for task, raw := range results {
-		metrics, ok := raw.(map[string]any)
+	weights := make(map[string]float64, len(counts))
+	for task, raw := range counts {
+		n, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
-		for key, val := range metrics {
-			if key == "alias" || strings.Contains(key, "stderr") {
+		// "effective" is what was actually evaluated after --limit, so it
+		// matches the denominator of the reported score; "original" is the full
+		// split size.
+		w, ok := jsonutil.Float(n["effective"])
+		if !ok || w <= 0 {
+			if w, ok = jsonutil.Float(n["original"]); !ok {
 				continue
 			}
-			f, ok := jsonutil.Float(val)
-			if !ok {
-				continue
-			}
-
-			metricName, filter := splitMetric(key)
-			structural := map[string]string{"task": task}
-			if filter != "" {
-				structural["filter"] = filter
-			}
-			tags := parser.MergeTags(in.Tags, structural)
-			id := task + "\x00" + filter
-			rec, ok := recs[id]
-			if !ok {
-				rec = &lineprotocol.Record{Measurement: measurement, Tags: tags, Fields: map[string]lineprotocol.Value{}}
-				recs[id] = rec
-			}
-			rec.Fields[naming.Normalize(metricName)] = lineprotocol.Float(f)
+		}
+		if w > 0 {
+			weights[task] = w
 		}
 	}
-
-	out := make([]lineprotocol.Record, 0, len(recs))
-	for _, rec := range recs {
-		if len(rec.Fields) > 0 {
-			out = append(out, *rec)
-		}
-	}
-	return out, nil
+	return weights
 }
 
 // splitMetric separates "exact_match,strict-match" into ("exact_match",

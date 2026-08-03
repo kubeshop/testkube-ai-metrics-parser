@@ -1,0 +1,3 @@
+deepeval,metric=answer_relevancy,suite=rag-quality-gate cost=0.0006,errors=0i,failed=1i,mean_score=0.666667,passed=2i,tests=3i
+deepeval,metric=faithfulness,suite=rag-quality-gate cost=0.0009,errors=0i,failed=1i,mean_score=0.833333,passed=2i,tests=3i
+deepeval,suite=rag-quality-gate errors=0i,failed=2i,passed=4i

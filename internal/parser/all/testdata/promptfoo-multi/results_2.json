@@ -1,0 +1,11 @@
+{
+  "results": {
+    "stats": {
+      "successes": 1,
+      "failures": 2,
+      "errors": 1,
+      "tokenUsage": { "prompt": 44, "completion": 34, "total": 78, "numRequests": 4 },
+      "durationMs": 900
+    }
+  }
+}

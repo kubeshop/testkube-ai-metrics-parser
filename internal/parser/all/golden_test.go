@@ -29,6 +29,18 @@ func TestGolden(t *testing.T) {
 		{"promptfoo", "promptfoo", "testdata/promptfoo/results.json", nil},
 		{"lmeval", "lm-eval", "testdata/lmeval/results.json", nil},
 		{"deepeval", "deepeval", "testdata/deepeval/test_run.json", map[string]string{"model": "gpt-4o"}},
+
+		// Globs matching several files: every framework folds the whole set
+		// into one run's metrics.
+		{"inspect-multi", "inspect-ai", "testdata/inspect-multi/*.json", nil},
+		{"ragas-multi", "ragas", "testdata/ragas-multi/*.json", nil},
+		{"promptfoo-multi", "promptfoo", "testdata/promptfoo-multi/*.json", nil},
+		{"lmeval-multi", "lm-eval", "testdata/lmeval-multi/*.json", nil},
+		{"deepeval-multi", "deepeval", "testdata/deepeval-multi/*.json", map[string]string{"suite": "rag-quality-gate"}},
+
+		// Unequal shards of one task: the score is weighted by the examples
+		// behind each shard, not averaged per file.
+		{"lmeval-shards", "lm-eval", "testdata/lmeval-shards/*.json", nil},
 	}
 
 	for _, tc := range cases {

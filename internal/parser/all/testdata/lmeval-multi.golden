@@ -1,0 +1,3 @@
+lm_eval,filter=flexible_extract,task=gsm8k exact_match=0.7
+lm_eval,filter=strict_match,task=gsm8k exact_match=0.1
+lm_eval,task=hellaswag acc=0.75,acc_norm=0.8

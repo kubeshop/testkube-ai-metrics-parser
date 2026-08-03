@@ -43,5 +43,9 @@ After a run, check the execution's Artifacts tab for `metrics.lp` (or
 - For matrix workflows (one model per parallel worker), put the export step
   inside the `parallel` block and tag it, e.g. `--tag model={{matrix.model}}`,
   because each worker has its own filesystem.
+- The export globs deliberately match every result file the eval wrote: a
+  DeepEval pytest run produces one `test_run_*.json` per test case, and all of
+  them are aggregated into the suite's totals. If you mount a results directory
+  that survives between runs, add `--latest` so old runs aren't folded in.
 - The image runs as root so it can write its `.lp` output into the shared
   workspace alongside files created by the (typically root) eval step.

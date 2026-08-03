@@ -1,0 +1,35 @@
+{
+  "testCases": [
+    {
+      "name": "test_rag_quality_gate[qa_001]",
+      "success": false,
+      "metricsData": [
+        {
+          "name": "Faithfulness",
+          "threshold": 0.8,
+          "success": true,
+          "score": 1.0,
+          "evaluationModel": "gpt-4o-mini",
+          "evaluationCost": 0.0003
+        },
+        {
+          "name": "Answer Relevancy",
+          "threshold": 0.8,
+          "success": false,
+          "score": 0.0,
+          "evaluationModel": "gpt-4o-mini",
+          "evaluationCost": 0.0002
+        }
+      ],
+      "runDuration": 5.4
+    }
+  ],
+  "conversationalTestCases": [],
+  "metricsScores": [
+    { "metric": "Faithfulness", "scores": [1.0], "passes": 1, "fails": 0, "errors": 0 },
+    { "metric": "Answer Relevancy", "scores": [0.0], "passes": 0, "fails": 1, "errors": 0 }
+  ],
+  "testPassed": 0,
+  "testFailed": 1,
+  "evaluationCost": 0.0005
+}
