@@ -30,6 +30,11 @@ func TestGolden(t *testing.T) {
 		{"lmeval", "lm-eval", "testdata/lmeval/results.json", nil},
 		{"deepeval", "deepeval", "testdata/deepeval/test_run.json", map[string]string{"model": "gpt-4o"}},
 
+		// Captured Harbor jobs: one whose agent reports token usage, and one
+		// (the nop agent) that reports none and earns no reward.
+		{"harbor", "harbor", "testdata/harbor/jobs/*/*/result.json", nil},
+		{"harbor-nop", "harbor", "testdata/harbor-nop/jobs/*/*/result.json", nil},
+
 		// Globs matching several files: every framework folds the whole set
 		// into one run's metrics.
 		{"inspect-multi", "inspect-ai", "testdata/inspect-multi/*.json", nil},

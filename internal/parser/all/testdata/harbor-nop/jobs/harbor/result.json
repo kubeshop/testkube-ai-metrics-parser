@@ -1,0 +1,41 @@
+{
+    "schema_version": 1,
+    "id": "1cb914fc-3ae9-4a43-b6cd-8f970f138d76",
+    "started_at": "2026-11-23T18:37:05.833914",
+    "updated_at": "2026-11-23T18:37:21.337399",
+    "finished_at": "2026-11-23T18:37:21.337399",
+    "n_total_trials": 2,
+    "stats": {
+        "n_completed_trials": 2,
+        "n_errored_trials": 0,
+        "n_running_trials": 0,
+        "n_pending_trials": 0,
+        "n_cancelled_trials": 0,
+        "n_retries": 0,
+        "evals": {
+            "nop__gpt-5.4-mini__tasks": {
+                "n_trials": 2,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "count-errors__5BPTLRK",
+                            "hello-world__dPQTJPg"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        },
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null
+    }
+}
