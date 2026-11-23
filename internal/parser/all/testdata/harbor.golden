@@ -1,0 +1,1 @@
+harbor_eval,agent=terminus-2,dataset=tasks,model=openai/gpt-5.4-mini agent_duration_ms=11383i,cache_tokens=0i,cost_usd=0.0049245,duration_ms=59398i,errors=0i,failed=0i,input_tokens=3398i,mean_reward=1,output_tokens=528i,pass_rate=1,passed=2i,total_tokens=3926i,trials=2i

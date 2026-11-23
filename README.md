@@ -16,6 +16,7 @@ consumer, not a requirement.
 - `promptfoo` — [promptfoo](https://www.promptfoo.dev/) eval results
 - `lm-eval` — [EleutherAI lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) results
 - `deepeval` — [DeepEval](https://deepeval.com/) test runs
+- `harbor` — [Harbor](https://github.com/harbor-framework/harbor) agent eval jobs
 
 See [docs/SCHEMA.md](docs/SCHEMA.md) for the exact measurements, fields, and
 tags each one emits.
@@ -97,9 +98,9 @@ A file that fails to parse is skipped with a warning rather than failing the
 export, so one truncated file (from an aborted or timed-out run) doesn't discard
 the rest. The command only fails if no file could be parsed at all.
 
-Pass `--latest` to parse just the newest matched file, which is what you want
-when the results directory is persisted across runs and still holds output from
-earlier ones. Files are ordered lexicographically, which matches chronological
+Pass `--latest` to parse just the newest matched file (for Harbor, all trials
+of the newest job), which is what you want when the results directory is
+persisted across runs and still holds output from earlier ones. Files are ordered lexicographically, which matches chronological
 order for the timestamped names these frameworks emit.
 
 ## Examples per framework
@@ -181,6 +182,24 @@ testkube-ai-metrics-parser deepeval -i 'results/test_run_*.json' -o results/metr
 # -> deepeval,metric=answer_relevancy,model=gpt-4o cost=0.003853,errors=0i,failed=2i,mean_score=0.882353,passed=15i,tests=17i
 # -> deepeval,model=gpt-4o errors=0i,failed=4i,passed=47i
 ```
+
+### harbor
+
+Reads the per-trial `result.json` files of a [Harbor](https://github.com/harbor-framework/harbor)
+job and emits one record per agent, model and dataset under `harbor_eval`:
+trial counts, pass rate, mean reward, token usage, cost and durations. A trial
+that crashed before earning a reward counts as 0 in `mean_reward`. Token and
+cost fields are left out for agents that report none.
+
+```bash
+harbor run -p tasks -a terminus-2 -m openai/gpt-5.4-mini -o jobs
+testkube-ai-metrics-parser harbor -i 'jobs/*/*/result.json' -o metrics/harbor.lp --stdout
+# -> harbor_eval,agent=terminus-2,dataset=tasks,model=openai/gpt-5.4-mini agent_duration_ms=11383i,cache_tokens=0i,cost_usd=0.0049245,duration_ms=59398i,errors=0i,failed=0i,input_tokens=3398i,mean_reward=1,output_tokens=528i,pass_rate=1,passed=2i,total_tokens=3926i,trials=2i
+```
+
+Harbor keeps earlier jobs in the same `jobs` directory, each in its own
+subdirectory. If that directory survives between runs, pass `--latest` to
+report only the newest job.
 
 ## Using it in a Testkube TestWorkflow
 

@@ -136,7 +136,18 @@ func reportInputs(w *os.File, in parser.Input, p parser.Parser) {
 		return
 	}
 	if in.Latest {
-		fmt.Fprintf(w, "using newest of %d matched files: %s\n", len(files), files[len(files)-1])
+		// A run can span several files (every trial of a Harbor job), so the
+		// newest run is not always the single newest file.
+		newest, err := parser.ResolveFiles(in, p)
+		if err != nil || len(newest) == 0 {
+			return
+		}
+		if len(newest) == 1 {
+			fmt.Fprintf(w, "using newest of %d matched files: %s\n", len(files), newest[0])
+			return
+		}
+		fmt.Fprintf(w, "using the newest run's %d of %d matched files (%s ... %s)\n",
+			len(newest), len(files), newest[0], newest[len(newest)-1])
 		return
 	}
 	fmt.Fprintf(w, "aggregating %d input files (%s ... %s)\n", len(files), files[0], files[len(files)-1])
@@ -184,8 +195,8 @@ Flags:
 
 When an input glob matches several files they are all parsed and folded into
 one set of metrics: counts are totalled, scores averaged. Pass --latest to
-report only the newest file, for example when the results directory keeps
-output from previous runs.
+report only the newest file (for harbor, the newest job), for example when the
+results directory keeps output from previous runs.
 
 Examples:
   testkube-ai-metrics-parser inspect-ai -i 'logs/*.json' -o metrics/eval.lp --stdout
@@ -193,6 +204,7 @@ Examples:
   testkube-ai-metrics-parser promptfoo -i results.json -o results.lp --stdout
   testkube-ai-metrics-parser lm-eval -i 'results/**/*.json' -o results/metrics.lp --stdout
   testkube-ai-metrics-parser deepeval -i 'results/test_run_*.json' --tag model=gpt-4o -o results/metrics.lp
+  testkube-ai-metrics-parser harbor -i 'jobs/*/*/result.json' -o metrics/harbor.lp --stdout
 `, version, strings.Join(parser.Names(), "\n  "))
 }
 

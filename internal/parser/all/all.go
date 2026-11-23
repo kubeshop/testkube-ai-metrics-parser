@@ -4,6 +4,7 @@ package all
 
 import (
 	_ "github.com/kubeshop/testkube-ai-metrics-parser/internal/parser/deepeval"
+	_ "github.com/kubeshop/testkube-ai-metrics-parser/internal/parser/harbor"
 	_ "github.com/kubeshop/testkube-ai-metrics-parser/internal/parser/inspect"
 	_ "github.com/kubeshop/testkube-ai-metrics-parser/internal/parser/lmeval"
 	_ "github.com/kubeshop/testkube-ai-metrics-parser/internal/parser/promptfoo"

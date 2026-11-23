@@ -1,6 +1,6 @@
 # Rewired example TestWorkflows
 
-These mirror the 5 demo-org `type=ai` workflows, each with an `Export metrics`
+These mirror the demo-org `type=ai` workflows, each with an `Export metrics`
 step that runs `testkube-ai-metrics-parser` and saves a `.lp` artifact for Testkube Insights.
 
 The export steps pull the published image
@@ -27,7 +27,7 @@ kubectl testkube run testworkflow ai-metrics-smoke -f
 Then the real ones:
 
 ```bash
-for f in ragas inspect-ai promptfoo lm-eval deepeval; do
+for f in ragas inspect-ai promptfoo lm-eval deepeval harbor; do
   kubectl testkube create testworkflow -f "examples/workflows/$f.yaml"
 done
 kubectl testkube run testworkflow ragas-getting-started -f
@@ -47,5 +47,9 @@ After a run, check the execution's Artifacts tab for `metrics.lp` (or
   DeepEval pytest run produces one `test_run_*.json` per test case, and all of
   them are aggregated into the suite's totals. If you mount a results directory
   that survives between runs, add `--latest` so old runs aren't folded in.
+- `harbor.yaml` runs Harbor's Docker environments inside a privileged
+  `docker:dind` container, so the cluster must allow privileged pods. Its
+  quality gate reads Harbor's job-level `result.json`; the export step runs
+  afterwards with `condition: always` so a failed gate still reports metrics.
 - The image runs as root so it can write its `.lp` output into the shared
   workspace alongside files created by the (typically root) eval step.

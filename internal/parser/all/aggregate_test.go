@@ -129,6 +129,116 @@ func TestParseNoMatchesIsNotAnError(t *testing.T) {
 	}
 }
 
+// harborTrial renders a minimal Harbor trial result.json. extra is spliced in
+// as further top-level members, for example `"exception_info": {...}`.
+func harborTrial(name, agent, rewards, extra string) string {
+	if extra != "" {
+		extra = ", " + extra
+	}
+	return `{"trial_name": "` + name + `", "source": "bench",
+		"agent_info": {"name": "` + agent + `", "version": "1", "model_info": {"name": "m1", "provider": "acme"}},
+		"verifier_result": ` + rewards + extra + `}`
+}
+
+func writeHarborTrial(t *testing.T, root, job, trial, content string) {
+	t.Helper()
+	dir := filepath.Join(root, job, trial)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", dir, err)
+	}
+	writeFile(t, filepath.Join(dir, "result.json"), content)
+}
+
+// One Harbor job is a directory of per-trial files. They fold into one record
+// per agent, a crashed trial counts as a zero reward instead of vanishing from
+// the mean, a trial passes only when every one of its rewards is at least 1,
+// and the job-level result.json matched by a loose glob is ignored.
+func TestHarborAggregatesTrialsPerAgent(t *testing.T) {
+	root := t.TempDir()
+	writeHarborTrial(t, root, "job", "a__1", harborTrial("a__1", "alpha", `{"rewards": {"reward": 1, "style": 1}}`,
+		`"agent_result": {"n_input_tokens": 100, "n_cache_tokens": 40, "n_output_tokens": 10, "cost_usd": 0.25},
+		 "started_at": "2026-11-23T10:00:00Z", "finished_at": "2026-11-23T10:00:02.5Z"`))
+	writeHarborTrial(t, root, "job", "a__2", harborTrial("a__2", "alpha", `{"rewards": {"reward": 1, "style": 0.5}}`,
+		// A multi-step trial reports usage per step, not at the top level.
+		`"agent_result": null, "step_results": [
+			{"agent_result": {"n_input_tokens": 30, "n_output_tokens": 5, "cost_usd": 0.1}},
+			{"agent_result": {"n_input_tokens": 20, "n_output_tokens": 5, "cost_usd": 0.15}}]`))
+	writeHarborTrial(t, root, "job", "a__3", harborTrial("a__3", "alpha", `null`,
+		`"exception_info": {"exception_type": "AgentTimeoutError"}`))
+	writeHarborTrial(t, root, "job", "b__1", harborTrial("b__1", "beta", `{"rewards": {"reward": 1}}`, ""))
+	writeFile(t, filepath.Join(root, "job", "result.json"), `{"n_total_trials": 4, "stats": {"n_errored_trials": 1}}`)
+
+	records := parseOrFail(t, "harbor", parser.Input{Files: []string{
+		filepath.Join(root, "*", "*", "result.json"),
+		filepath.Join(root, "*", "result.json"),
+	}})
+	if len(records) != 2 {
+		t.Fatalf("got %d records, want 2 (one per agent)", len(records))
+	}
+
+	alpha := harborRecord(t, records, "alpha")
+	if got, want := alpha.Tags["model"], "acme/m1"; got != want {
+		t.Errorf("model tag = %q, want %q", got, want)
+	}
+	if got, want := alpha.Tags["dataset"], "bench"; got != want {
+		t.Errorf("dataset tag = %q, want %q", got, want)
+	}
+	for name, want := range map[string]float64{
+		"trials": 3, "passed": 1, "failed": 2, "errors": 1,
+		"pass_rate":    0.333333,
+		"mean_reward":  0.666667, // (1 + 1 + 0 for the crashed trial) / 3
+		"mean_style":   0.5,
+		"input_tokens": 150, "cache_tokens": 40, "output_tokens": 20, "total_tokens": 170,
+		"cost_usd":    0.5,
+		"duration_ms": 2500,
+	} {
+		if got := field(t, alpha, name); got != want {
+			t.Errorf("alpha %s = %v, want %v", name, got, want)
+		}
+	}
+
+	// An agent that reports no usage gets no token or cost fields at all,
+	// rather than misleading zeros.
+	beta := harborRecord(t, records, "beta")
+	for _, name := range []string{"input_tokens", "total_tokens", "cost_usd", "duration_ms"} {
+		if _, ok := beta.Fields[name]; ok {
+			t.Errorf("beta has field %q, want it omitted", name)
+		}
+	}
+}
+
+// For Harbor, --latest means the newest job, with all of its trials, not the
+// single newest trial file.
+func TestHarborLatestUsesNewestJob(t *testing.T) {
+	root := t.TempDir()
+	writeHarborTrial(t, root, "2026-11-22__10-00-00", "z__1", harborTrial("z__1", "alpha", `{"rewards": {"reward": 0}}`, ""))
+	writeHarborTrial(t, root, "2026-11-23__10-00-00", "a__1", harborTrial("a__1", "alpha", `{"rewards": {"reward": 1}}`, ""))
+	writeHarborTrial(t, root, "2026-11-23__10-00-00", "b__1", harborTrial("b__1", "alpha", `{"rewards": {"reward": 1}}`, ""))
+
+	records := parseOrFail(t, "harbor", parser.Input{
+		Files:  []string{filepath.Join(root, "*", "*", "result.json")},
+		Latest: true,
+	})
+	rec := harborRecord(t, records, "alpha")
+	if got, want := field(t, rec, "trials"), 2.0; got != want {
+		t.Errorf("trials = %v, want %v (both trials of the newest job)", got, want)
+	}
+	if got, want := field(t, rec, "mean_reward"), 1.0; got != want {
+		t.Errorf("mean_reward = %v, want %v", got, want)
+	}
+}
+
+func harborRecord(t *testing.T, records []lineprotocol.Record, agent string) lineprotocol.Record {
+	t.Helper()
+	for _, rec := range records {
+		if rec.Tags["agent"] == agent {
+			return rec
+		}
+	}
+	t.Fatalf("no record for agent %q", agent)
+	return lineprotocol.Record{}
+}
+
 func parseOrFail(t *testing.T, framework string, in parser.Input) []lineprotocol.Record {
 	t.Helper()
 	p, ok := parser.Get(framework)

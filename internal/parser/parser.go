@@ -51,6 +51,14 @@ type Parser interface {
 	Parse(in Input) ([]lineprotocol.Record, error)
 }
 
+// LatestSelector is an optional Parser extension for frameworks whose single
+// run spans several files. Input.Latest normally keeps the one newest file;
+// such a parser instead picks, from the sorted matches, every file belonging to
+// the newest run.
+type LatestSelector interface {
+	SelectLatest(files []string) []string
+}
+
 var registry = map[string]Parser{}
 
 // Register adds p to the global registry. Intended to be called from parser
@@ -79,7 +87,8 @@ func Names() []string {
 // is empty, the parser defaults) into a sorted, de-duplicated list of existing
 // files. Sorting is lexicographic, which for the timestamped names frameworks
 // emit (for example DeepEval's test_run_<ts>.json) is also chronological, so
-// Input.Latest can keep the newest file by taking the tail.
+// Input.Latest can keep the newest file by taking the tail. A parser that
+// implements LatestSelector chooses the newest run's files itself.
 func ResolveFiles(in Input, p Parser) ([]string, error) {
 	globs := in.Files
 	if len(globs) == 0 {
@@ -101,7 +110,11 @@ func ResolveFiles(in Input, p Parser) ([]string, error) {
 	}
 	sort.Strings(out)
 	if in.Latest && len(out) > 1 {
-		out = out[len(out)-1:]
+		if s, ok := p.(LatestSelector); ok {
+			out = s.SelectLatest(out)
+		} else {
+			out = out[len(out)-1:]
+		}
 	}
 	return out, nil
 }
